@@ -1,0 +1,353 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+    <title>Document</title>
+    <style>
+      html,
+      body {
+        height: 100%;
+        margin: 0;
+      }
+      #app {
+        height: 100%;
+        display: flex;
+      }
+      .container {
+        height: 100%;
+        margin: 0 10px;
+        border: 1px solid olivedrab;
+        box-sizing: border-box;
+        position: relative;
+      }
+      .side {
+        flex: 2;
+      }
+      .main {
+        flex: 3;
+      }
+      .window-container {
+        position: absolute;
+        display: inline-block;
+        border: 1px solid lightgray;
+        box-sizing: border-box;
+        box-shadow: 1px 1px 5px gray;
+        display: flex;
+        flex-direction: column;
+        background: white; /* 不能透明 */
+      }
+      .window-title {
+        height: 30px;
+        line-height: 30px;
+        border-bottom: 1px solid #aaaaaa;
+        text-align: center;
+        user-select: none;
+      }
+      .window-title:hover {
+        cursor: move;
+      }
+      .window-btn {
+        float: right;
+        border: none;
+        background: none;
+        outline: none;
+      }
+      .window-close:hover {
+        background: FireBrick;
+        cursor: pointer;
+      }
+      .window-min:hover,
+      .window-max:hover {
+        background: #bbbbbb;
+        cursor: pointer;
+      }
+      .window-body {
+        flex: 1;
+        position: relative;
+      }
+      .window-right-drag-handler {
+        position: absolute;
+        right: -3px;
+        width: 6px;
+        top: 0;
+        bottom: 0;
+      }
+      .window-right-drag-handler:hover {
+        cursor: ew-resize;
+      }
+      .window-bottom-drag-handler {
+        position: absolute;
+        right: 0;
+        height: 6px;
+        left: 0;
+        bottom: -3px;
+      }
+      .window-bottom-drag-handler:hover {
+        cursor: ns-resize;
+      }
+      .window-right-bottom-drag-handler {
+        position: absolute;
+        width: 6px;
+        height: 6px;
+        bottom: -3px;
+        right: -3px;
+      }
+      .window-right-bottom-drag-handler:hover {
+        cursor: se-resize;
+      }
+    </style>
+  </head>
+  <body>
+    <div id="app">
+      <div class="container side">
+        <window title="Hello Window"></window>
+        <window title="Hello Window1" :init-left="50" :init-top="50" :resizable="false"></window>
+      </div>
+      <div class="container main">
+        <window title="Hello Window2"></window>
+      </div>
+    </div>
+    <script src="vue.js"></script>
+    <script>
+      Vue.component("window", {
+        data: function() {
+          return {
+            position: {
+              width: this.initWidth + "px",
+              height: this.initHeight + "px",
+              left: this.initLeft + "px",
+              top: this.initTop + "px"
+            }, //窗口都是绝对定位
+            isMax: false, //当前是否是最大化状态
+            isMin: false, //当前是否是最小化状态
+            previousPosition: null, //保存前一个状态的position，供从最大化恢复的时候使用
+            dragging: false, //是否正在拖动
+            positionBeforeDragging: null,
+            resizeType: null, //right 向右拖动, bottom 向下拖动, both 同时
+            resizeOrigin: null //开始拖动时的初始坐标
+          };
+        },
+        props: {
+          shadowWidth: {
+            type: Number,
+            default: 3
+          }, // 阴影宽度
+          title: {
+            type: String,
+            default: ""
+          }, //标题
+          initWidth: {
+            type: Number,
+            default: 300
+          }, //初始宽度
+          initHeight: {
+            type: Number,
+            default: 200
+          }, //初始高度
+          minWidth: {
+            type: Number,
+            default: 200
+          },
+          minHeight: {
+            type: Number,
+            default: 150
+          },
+          initLeft: {
+            type: Number,
+            default: 10
+          }, //初始左边距
+          initTop: {
+            type: Number,
+            default: 10
+          }, //初始上边距
+          minimize: {
+            type: Boolean,
+            default: true
+          }, //能否最小化
+          maxmize: {
+            type: Boolean,
+            default: true
+          }, //能否最大化
+          closable: {
+            type: Boolean,
+            default: true
+          }, //能否关闭
+          resizable: {
+            type: Boolean,
+            default: true
+          } //能否缩放
+        },
+        methods: {
+          close: function() {
+            this.$el.parentNode.removeChild(this.$el);
+            //这个调用是割断Vue组件和DOM的关系，不是把这个组件删除
+            //官网的原文是完全销毁一个实例。清理它与其它实例的连接，解绑它的全部指令及事件监听器
+            //实测是不会删除组件DOM的
+            this.$destroy();
+          },
+          makeWindowForground() {
+            //要在这个组件的容器下寻找Window
+            Array.from(this.$el.parentElement.children)
+              .filter(node => node.classList.contains("window-container"))
+              .forEach(node => (node.style.zIndex = 1000));
+            this.$el.style.zIndex = 2000;
+          },
+          max: function() {
+            if (this.isMax) {
+              this.isMax = false;
+              this.position = this.previousPosition;
+              this.previousPosition = null;
+            } else {
+              this.isMin = false;
+              this.isMax = true;
+              this.previousPosition = this.position;
+              this.position = {
+                width: "100%",
+                height: "100%",
+                left: 0,
+                top: 0
+              };
+            }
+          },
+          min: function() {
+            if (this.isMin) {
+              this.isMin = false;
+            } else {
+              this.isMax = false;
+              this.isMin = true;
+            }
+          },
+          startDrag: function(e) {
+            if (!this.isMax) {
+              this.dragging = true;
+              this.positionBeforeDragging = {
+                x: e.clientX,
+                y: e.clientY,
+                left: parseFloat(this.position.left),
+                top: parseFloat(this.position.top)
+              };
+              // 在按下去后才绑定事件
+              document.addEventListener("mouseup", this.endDrag);
+              document.addEventListener("mousemove", this.drag);
+            }
+          },
+          drag: function(e) {
+            //挂载document上，是因为有的时候拖动太快，窗口位置没有跟上鼠标
+            //导致鼠标在title之外了而不响应事件了
+            if (this.dragging) {
+              const offsetX = e.clientX - this.positionBeforeDragging.x;
+              const offsetY = e.clientY - this.positionBeforeDragging.y;
+              //往左移动不能小于0 往右移动不能大于容器边界
+              let positionLeft = this.positionBeforeDragging.left + offsetX;
+              if (positionLeft < 0 && offsetX < 0) {
+                //offsetX < 0表明往左移动
+                positionLeft = 0;
+              }
+              //由于阴影有宽度，一般人的视觉上把阴影也算作窗口的一部分
+              if (
+                positionLeft + parseFloat(this.position.width) + this.shadowWidth >
+                  parseFloat(getComputedStyle(this.$el.parentElement).width) &&
+                offsetX > 0
+              ) {
+                positionLeft =
+                  parseFloat(getComputedStyle(this.$el.parentElement).width) -
+                  parseFloat(this.position.width) -
+                  this.shadowWidth;
+              }
+
+              this.position.left = positionLeft + "px";
+
+              let positionTop = this.positionBeforeDragging.top + offsetY;
+              if (positionTop < 0 && offsetY < 0) {
+                //offsetY < 0表明往上移动
+                positionTop = 0;
+              }
+              if (
+                positionTop + parseFloat(this.position.height) + this.shadowWidth >
+                  parseFloat(getComputedStyle(this.$el.parentElement).height) &&
+                offsetY > 0
+              ) {
+                positionTop =
+                  parseFloat(getComputedStyle(this.$el.parentElement).height) -
+                  parseFloat(this.position.height) -
+                  this.shadowWidth;
+              }
+              this.position.top = positionTop + "px";
+            }
+          },
+          endDrag: function(e) {
+            //挂在document上，是因为有的时候没有拖动成功(在边界上)鼠标抬起时已经不在title的位置里面了
+            this.dragging = false;
+            //结束拖动后移除事件
+            document.removeEventListener("mouseup", this.endDrag);
+            document.removeEventListener("mousemove", this.drag);
+          },
+          startResize: function(e, type) {
+            this.resizeType = type;
+            this.resizeOrigin = {
+              x: e.clientX,
+              y: e.clientY,
+              width: this.position.width,
+              height: this.position.height
+            };
+            document.addEventListener("mousemove", this.resize);
+            document.addEventListener("mouseup", this.endResize);
+          },
+          resize: function(e) {
+            if (this.resizeType) {
+              let newWidth;
+              let newHeight;
+              if (["right", "both"].includes(this.resizeType)) {
+                newWidth = parseInt(this.resizeOrigin.width) + e.clientX - this.resizeOrigin.x;
+                if (newWidth < this.minWidth) {
+                  //检查最小宽度
+                  newWidth = this.minWidth;
+                }
+                if (newWidth > this.$el.parentElement.clientWidth - parseInt(this.position.left)) {
+                  //检查边界
+                  newWidth = this.$el.parentElement.clientWidth - parseInt(this.position.left);
+                }
+                this.position.width = newWidth + "px";
+              }
+              if (["bottom", "both"].includes(this.resizeType)) {
+                newHeight = parseInt(this.resizeOrigin.height) + e.clientY - this.resizeOrigin.y;
+                if (newHeight < this.minHeight) {
+                  //检查最小宽度
+                  newHeight = this.minHeight;
+                }
+                if (newHeight > this.$el.parentElement.clientHeight - parseInt(this.position.top)) {
+                  //检查边界
+                  newHeight = this.$el.parentElement.clientHeight - parseInt(this.position.top);
+                }
+                this.position.height = newHeight + "px";
+              }
+            }
+          },
+          endResize: function(e) {
+            this.resizeType = null;
+            document.removeEventListener("mousemove", this.resize);
+          }
+        },
+
+        template: `<div class="window-container" @mousedown="makeWindowForground" :style="{width:position.width,height:isMin?'30px':position.height,left:position.left,top:position.top}">
+            <div class="window-title" @mousedown="startDrag" >{{title}}
+                <button class="window-btn window-close" v-if="closable" @click="close">×</button>
+                <button class="window-btn window-max" v-if="maxmize" @click="max">{{isMax?'□':'+'}}</button>
+                <button class="window-btn window-min" v-if="minimize" @click="min">-</button>
+            </div>
+            <div class="window-body" v-show="!isMin">
+
+              <div v-if="resizable" class="window-right-drag-handler" @mousedown="startResize($event,'right')"></div>
+              <div v-if="resizable" class="window-bottom-drag-handler"  @mousedown="startResize($event,'bottom')"></div>
+              <div v-if="resizable" class="window-right-bottom-drag-handler"  @mousedown="startResize($event,'both')"></div>
+            </div>
+        </div>`
+      });
+      new Vue({
+        el: "#app"
+      });
+    </script>
+  </body>
+</html>
