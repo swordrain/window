@@ -1,3 +1,3 @@
 # window
 
-Window
+Window(Vue)
